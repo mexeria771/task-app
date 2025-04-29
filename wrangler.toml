@@ -1,0 +1,14 @@
+name = "task-app"
+type = "webpack"
+account_id = "e272c145766a545b58ba584f8d6d1c4e"
+workers_dev = true
+route = ""
+zone_id = ""
+compatibility_date = "2025-04-29"
+
+[site]
+bucket = "./public"
+entry-point = "worker.js"
+
+[env.production]
+

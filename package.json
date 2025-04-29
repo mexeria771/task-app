@@ -1,0 +1,15 @@
+{
+  "name": "task-app",
+  "version": "1.0.0",
+  "description": "シンプルなタスク管理アプリケーション",
+  "main": "worker.js",
+  "scripts": {
+    "start": "node start-server.js",
+    "deploy": "wrangler publish"
+  },
+  "author": "",
+  "license": "MIT",
+  "devDependencies": {
+    "wrangler": "^3.0.0"
+  }
+}
