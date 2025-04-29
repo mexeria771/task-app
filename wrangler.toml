@@ -7,7 +7,7 @@ zone_id = ""
 compatibility_date = "2025-04-29"
 
 [site]
-bucket = "./public"
+bucket = "./"
 entry-point = "worker.js"
 
 [env.production]
