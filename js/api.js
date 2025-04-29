@@ -43,13 +43,25 @@ class TaskAPI {
   /**
    * Get all tasks (without subtasks initially)
    */
+  /**
+   * Get current user ID or fallback to 'anonymous' if not authenticated
+   */
+  getUserId() {
+    // authServiceが存在し、ユーザーが認証されている場合
+    if (window.authService && window.authService.getUserId()) {
+      return window.authService.getUserId();
+    }
+    // 認証されていない場合のフォールバック
+    return 'anonymous';
+  }
+
   async getAllTasks() {
     if (this.supabase) {
       try {
         const { data, error } = await this.supabase
           .from('tasks')
           .select('*')
-          // Consider adding a default sort order if needed, e.g., by creation date
+          .eq('user_id', this.getUserId()) // 現在のユーザーのタスクのみ取得
           .order('created_at', { ascending: true }); // Example: sort by oldest first
 
         if (error) throw error;
@@ -112,7 +124,8 @@ class TaskAPI {
       status: 'active',
       is_current: false, // New tasks are never current initially
       created_at: timestamp,
-      updated_at: timestamp
+      updated_at: timestamp,
+      user_id: this.getUserId() // ユーザーIDを設定
     };
 
     if (this.supabase) {
@@ -723,6 +736,7 @@ class TaskAPI {
         const { data, error } = await this.supabase
           .from('interruption_tasks')
           .select('*')
+          .eq('user_id', this.getUserId()) // 現在のユーザーの割り込みタスクのみ取得
           .order('created_at', { ascending: false });
 
         if (error) throw error;
@@ -759,7 +773,8 @@ class TaskAPI {
       // elapsed_time is not typically tracked for interruptions
       added_to_main: false,
       created_at: timestamp,
-      updated_at: timestamp // Set updated_at on creation too
+      updated_at: timestamp, // Set updated_at on creation too
+      user_id: this.getUserId() // ユーザーIDを設定
     };
 
     if (this.supabase) {

@@ -1,5 +1,31 @@
 // Main application code
 document.addEventListener('DOMContentLoaded', () => {
+  // アプリの初期化はauth.jsとapp_auth.jsで行われるため、直ちに処理を開始せず
+  // 認証後にappContainerが表示された時に初期化を行う
+
+  // appContainerの監視
+  const appContainer = document.getElementById('app-container');
+  const appObserver = new MutationObserver((mutations) => {
+    for (const mutation of mutations) {
+      if (mutation.type === 'attributes' && 
+          mutation.attributeName === 'class' && 
+          !appContainer.classList.contains('hidden')) {
+        console.log('App container is now visible, initializing app...');
+        appObserver.disconnect(); // 監視を停止
+        initApp(); // アプリの初期化を開始
+      }
+    }
+  });
+  
+  // appContainerのclass属性を監視
+  appObserver.observe(appContainer, { attributes: true });
+
+  // 表示中の場合は直ちに初期化
+  if (!appContainer.classList.contains('hidden')) {
+    console.log('App container is already visible, initializing app...');
+    initApp();
+  }
+
   // DOM element references
   const currentTaskEl = document.getElementById('current-task'); // ドロップゾーンとして使う親要素
   const currentTaskContent = document.getElementById('current-task-content');
@@ -51,8 +77,40 @@ document.addEventListener('DOMContentLoaded', () => {
   let currentTimerSeconds = 0;
   let currentTaskId = null;
 
-  // App initialization
+  // アプリの実際の初期化処理
   async function initApp() {
+    // ヘッダーにユーザー情報とアプリ名を表示
+    const headerElement = document.createElement('header');
+    headerElement.className = 'bg-white shadow-sm p-3 flex justify-between items-center';
+    headerElement.innerHTML = `
+      <h1 class="text-lg font-bold text-gray-800">タスク管理アプリ</h1>
+      <div id="user-info-container"></div>
+    `;
+    
+    // ヘッダーをアプリコンテナの最初の子要素として挿入
+    if (appContainer.firstChild) {
+      appContainer.insertBefore(headerElement, appContainer.firstChild);
+    } else {
+      appContainer.appendChild(headerElement);
+    }
+
+    // ユーザー情報を表示
+    const userInfoContainer = document.getElementById('user-info-container');
+    if (window.authService && window.authService.getUserEmail()) {
+      userInfoContainer.innerHTML = `
+        <button id="user-menu-button" class="text-sm text-blue-500 hover:text-blue-700">
+          <i class="fas fa-user-circle mr-1"></i> ${window.authService.getUserEmail()}
+        </button>
+      `;
+      
+      // ユーザーメニューボタンのイベントリスナー
+      document.getElementById('user-menu-button').addEventListener('click', () => {
+        document.getElementById('user-email').textContent = window.authService.getUserEmail() || '';
+        document.getElementById('user-modal').classList.remove('hidden');
+        document.getElementById('user-modal').classList.add('flex', 'fade-in');
+      });
+    }
+
     // Load tasks
     await loadTaskList();
 
