@@ -806,6 +806,58 @@ class TaskAPI {
   }
 
   /**
+   * Update an interruption task
+   */
+  async updateInterruptionTask(taskId, updateData) {
+    if (!taskId) throw new Error("Interruption Task ID is required for update.");
+
+    const timestamp = this.getCurrentTimestamp();
+    const dataToUpdate = {
+      ...updateData,
+      updated_at: timestamp // Always update the timestamp
+    };
+
+    // Prevent updating immutable fields accidentally
+    delete dataToUpdate.id;
+    delete dataToUpdate.created_at;
+
+    if (this.supabase) {
+      try {
+        const { data, error } = await this.supabase
+          .from('interruption_tasks')
+          .update(dataToUpdate)
+          .eq('id', taskId)
+          .select()
+          .single();
+
+        if (error) throw error;
+        return data;
+      } catch (error) {
+        console.error(`Supabase Error updating interruption task ${taskId}:`, error);
+        throw new Error(`Failed to update interruption task in Supabase: ${error.message}`);
+      }
+    } else if (supabaseConfig.useLocalStorage) {
+      try {
+        const tasks = await this.getInterruptionTasks();
+        const taskIndex = tasks.findIndex(task => task.id === taskId);
+
+        if (taskIndex !== -1) {
+          // Merge existing task with updateData
+          tasks[taskIndex] = { ...tasks[taskIndex], ...dataToUpdate };
+          localStorage.setItem(supabaseConfig.localStorageKeys.interruptions, JSON.stringify(tasks));
+          return tasks[taskIndex];
+        } else {
+          throw new Error(`Interruption task with ID ${taskId} not found in localStorage.`);
+        }
+      } catch (error) {
+        console.error(`LocalStorage Error updating interruption task ${taskId}:`, error);
+        throw new Error(`Failed to update interruption task in localStorage: ${error.message}`);
+      }
+    }
+    throw new Error("No storage method configured.");
+  }
+
+  /**
    * Delete an interruption task
    */
   async deleteInterruptionTask(taskId) {

@@ -276,7 +276,7 @@ document.addEventListener('DOMContentLoaded', () => {
       if (task.is_current) {
         classes += ' bg-blue-100 border-blue-300'; // 現在のタスク
       } else if (task.status === 'completed') {
-        classes += ' bg-gray-100 text-gray-500 line-through cursor-not-allowed'; // 完了タスク
+        classes += ' bg-gray-100 text-gray-500 line-through'; // 完了タスク
       } else {
         classes += ' hover:bg-gray-50 cursor-grab'; // 未完了タスク
       }
@@ -304,7 +304,11 @@ document.addEventListener('DOMContentLoaded', () => {
               <button class="edit-task-btn text-xs bg-gray-200 hover:bg-gray-300 text-gray-800 py-1 px-2 rounded">
                 編集
               </button>
-            ` : ''}
+            ` : `
+              <button class="restore-task-btn text-xs bg-green-500 hover:bg-green-600 text-white py-1 px-2 rounded">
+                復元
+              </button>
+            `}
             <button class="delete-task-btn text-xs bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded">
               削除
             </button>
@@ -318,6 +322,14 @@ document.addEventListener('DOMContentLoaded', () => {
         deleteTask(task.id);
       });
 
+      // 完了タスクの復元ボタン
+      if (task.status === 'completed') {
+        taskEl.querySelector('.restore-task-btn')?.addEventListener('click', async (e) => {
+          e.stopPropagation();
+          await restoreTask(task.id);
+        });
+      }
+      
       if (task.status !== 'completed') {
         taskEl.querySelector('.select-task-btn')?.addEventListener('click', async (e) => {
           e.stopPropagation();
@@ -513,6 +525,9 @@ document.addEventListener('DOMContentLoaded', () => {
               <button class="add-to-main-btn text-xs bg-yellow-500 hover:bg-yellow-600 text-white py-1 px-2 rounded" data-interruption-id="${task.id}">
                 メインに追加
               </button>
+              <button class="complete-interruption-btn text-xs bg-blue-500 hover:bg-blue-600 text-white py-1 px-2 rounded" data-interruption-id="${task.id}">
+                完了
+              </button>
             ` : ''}
             <button class="delete-interruption-btn text-xs bg-red-500 hover:bg-red-600 text-white py-1 px-2 rounded" data-interruption-id="${task.id}">
               削除
@@ -529,6 +544,12 @@ document.addEventListener('DOMContentLoaded', () => {
       taskEl.querySelector('.add-to-main-btn')?.addEventListener('click', async (e) => {
         const id = e.target.dataset.interruptionId;
         await moveInterruptionToMain(id);
+      });
+      
+      // 完了ボタンのイベントリスナー
+      taskEl.querySelector('.complete-interruption-btn')?.addEventListener('click', async (e) => {
+        const id = e.target.dataset.interruptionId;
+        await completeInterruptionTask(id);
       });
 
       interruptionListEl.appendChild(taskEl);
@@ -556,34 +577,57 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   function startTimer() {
-    if (timerInterval) return; // Already running
-    if (!currentTaskId) return; // No task selected
+    if (timerInterval) {
+      console.log('Timer already running, not starting again');
+      return; // Already running
+    }
+    if (!currentTaskId) {
+      console.log('No current task, cannot start timer');
+      return; // No task selected
+    }
 
     console.log(`Starting timer for task: ${currentTaskId}`);
     timerDisplay.classList.add('timer-active'); // Optional: for styling
 
+    // 現在のタスクタイマー状態のローカル変数
+    let localTimerSeconds = currentTimerSeconds;
+    let lastSaveTime = Date.now();
+
     timerInterval = setInterval(async () => {
-      currentTimerSeconds++;
+      localTimerSeconds++;
+      currentTimerSeconds = localTimerSeconds; // タイマー状態を同期
       updateTimerDisplay();
 
-      // Save periodically (e.g., every 10 seconds)
-      if (currentTimerSeconds % 10 === 0) {
-        console.log(`Auto-saving timer state for task ${currentTaskId} at ${currentTimerSeconds}s`);
-        await saveTimerState();
+      // 定期的な状態保存（5秒ごと）と現時刻を更新
+      const now = Date.now();
+      if (now - lastSaveTime >= 5000) { // 5秒ごとに保存
+        console.log(`Auto-saving timer state for task ${currentTaskId} at ${localTimerSeconds}s`);
+        await saveTimerState(localTimerSeconds);
+        lastSaveTime = now;
       }
     }, 1000);
   }
 
   function stopTimerAndSave() {
-    if (!timerInterval) return; // Not running
+    if (!timerInterval) {
+      console.log('Timer not running, nothing to stop');
+      return; // Not running
+    }
 
     console.log(`Stopping timer for task: ${currentTaskId} at ${currentTimerSeconds}s`);
     clearInterval(timerInterval);
     timerInterval = null;
-    timerDisplay.classList.remove('timer-active'); // Optional: for styling
+    timerDisplay.classList.remove('timer-active');
 
-    // Save the final time
-    saveTimerState();
+    // 最終的な時間を保存し、成功したか確認
+    const finalTime = currentTimerSeconds;
+    saveTimerState(finalTime).then(success => {
+      if (!success) {
+        // 保存に失敗した場合、ユーザーに通知
+        console.error(`Failed to save final timer state of ${finalTime}s`);
+        alert(`タイマーの状態保存に失敗しました。時間：${finalTime}秒`);
+      }
+    });
   }
 
     // Function to just stop the interval without saving
@@ -604,17 +648,22 @@ document.addEventListener('DOMContentLoaded', () => {
   }
 
   // Save elapsed time to backend/storage
-  async function saveTimerState() {
+  async function saveTimerState(timeToSave = null) {
     if (!currentTaskId) {
         console.warn("Attempted to save timer state without a current task ID.");
         return;
     }
     try {
-        await taskAPI.updateTaskTime(currentTaskId, currentTimerSeconds);
-        console.log(`Successfully saved time ${currentTimerSeconds}s for task ${currentTaskId}`);
+        // タイマー値が指定されている場合はそれを使用、そうでなければ現在の値を使用
+        const timeValue = timeToSave !== null ? timeToSave : currentTimerSeconds;
+        console.log(`Saving timer state: ${timeValue}s for task ${currentTaskId}`);
+        await taskAPI.updateTaskTime(currentTaskId, timeValue);
+        console.log(`Successfully saved time ${timeValue}s for task ${currentTaskId}`);
+        return true;
     } catch (error) {
         console.error(`Error saving timer state for task ${currentTaskId}:`, error);
-        // Optionally inform the user
+        // ユーザーに通知（オプション）
+        return false;
     }
   }
 
@@ -740,12 +789,22 @@ document.addEventListener('DOMContentLoaded', () => {
 
       console.log(`[selectTask] Started for task ID: ${taskId}. Previous task ID: ${currentTaskId}`);
 
-      // Stop and save time for the PREVIOUS task if there was one and timer was running
+      // 前のタスクのタイマーが実行中なら停止して保存
       if (timerInterval) {
           console.log(`[selectTask] Stopping and saving timer for previous task: ${currentTaskId}`);
-          stopTimerAndSave();
+          // まずタイマーを停止
+          clearInterval(timerInterval);
+          timerInterval = null;
+          timerDisplay.classList.remove('timer-active');
+          
+          // 最終的な時間を保存
+          const saved = await saveTimerState(currentTimerSeconds);
+          if (!saved) {
+              console.error(`[selectTask] Failed to save timer state for previous task ${currentTaskId}`);
+              // エラーは通知するが処理は続行
+          }
       } else if(currentTaskId) {
-          // If timer wasn't running but there was a current task, ensure its last time is saved.
+          // タイマーが実行中でなくても、前のタスクがあれば最後の時間を保存
           console.log(`[selectTask] Saving final timer state for previous task: ${currentTaskId}`);
           await saveTimerState();
       }
@@ -766,6 +825,24 @@ document.addEventListener('DOMContentLoaded', () => {
           console.error(`[selectTask] Error during selection process for task ${taskId}:`, error);
           alert(`タスクの選択中にエラーが発生しました: ${error.message}`);
       }
+  }
+
+  // タスクの復元機能
+  async function restoreTask(taskId) {
+    if (!confirm(`タスク「${document.querySelector(`.task-item[data-id="${taskId}"] h4`)?.textContent || taskId}」を復元しますか？`)) {
+      return;
+    }
+
+    console.log(`Attempting to restore task: ${taskId}`);
+    try {
+        await taskAPI.updateTask(taskId, { status: 'active' });
+        console.log(`Task ${taskId} restored successfully.`);
+        // タスクリストを更新
+        await loadTaskList();
+    } catch (error) {
+        console.error(`Error restoring task ${taskId}:`, error);
+        alert(`タスクの復元中にエラーが発生しました: ${error.message}`);
+    }
   }
 
   // Task operations: Complete Current Task
@@ -960,6 +1037,21 @@ document.addEventListener('DOMContentLoaded', () => {
          console.error(`Error deleting interruption task ${taskId}:`, error);
          alert(`割り込みタスクの削除中にエラーが発生しました: ${error.message}`);
      }
+  }
+
+  // 割り込みタスクを完了としてマーク
+  async function completeInterruptionTask(taskId) {
+    if (!confirm('この割り込みタスクを完了としてマークしますか？')) return;
+    
+    console.log("Completing interruption task:", taskId);
+    try {
+        // 割り込みタスクを完了済みとしてマーク（added_to_main = true）
+        await taskAPI.updateInterruptionTask(taskId, { added_to_main: true });
+        await loadInterruptionTasks(); // リストを再読み込み
+    } catch (error) {
+        console.error(`Error completing interruption task ${taskId}:`, error);
+        alert(`割り込みタスクの完了中にエラーが発生しました: ${error.message}`);
+    }
   }
 
   async function moveInterruptionToMain(taskId) {
