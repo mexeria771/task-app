@@ -1,4 +1,4 @@
-name = "task-app"
+name = "task-app2"
 type = "webpack"
 account_id = "e272c145766a545b58ba584f8d6d1c4e"
 workers_dev = true
