@@ -44,25 +44,38 @@ class TaskAPI {
    * Get all tasks (without subtasks initially)
    */
   /**
-   * Get current user ID or fallback to 'anonymous' if not authenticated
+   * Get current user ID - 認証されている場合のみ値を返す
    */
   getUserId() {
     // authServiceが存在し、ユーザーが認証されている場合
     if (window.authService && window.authService.getUserId()) {
       return window.authService.getUserId();
     }
-    // 認証されていない場合のフォールバック
-    return 'anonymous';
+    // 認証されていない場合はnullを返す
+    return null;
   }
 
   async getAllTasks() {
+    const userId = this.getUserId();
+    // 認証されていない場合は空の配列を返す
+    if (!userId && !supabaseConfig.useLocalStorage) {
+      console.warn('API: User not authenticated, cannot fetch tasks');
+      return [];
+    }
+
     if (this.supabase) {
       try {
-        const { data, error } = await this.supabase
+        const query = this.supabase
           .from('tasks')
           .select('*')
-          .eq('user_id', this.getUserId()) // 現在のユーザーのタスクのみ取得
-          .order('created_at', { ascending: true }); // Example: sort by oldest first
+          .order('created_at', { ascending: true });
+        
+        // 認証されている場合のみuser_idで絞り込む
+        if (userId) {
+          query.eq('user_id', userId);
+        }
+          
+        const { data, error } = await query;
 
         if (error) throw error;
         return data || []; // Ensure it returns an array even if data is null
@@ -115,6 +128,12 @@ class TaskAPI {
    * Create a new task
    */
   async createTask(taskData) {
+    const userId = this.getUserId();
+    // 認証されていない場合はエラーを投げる
+    if (!userId && !supabaseConfig.useLocalStorage) {
+      throw new Error('User not authenticated, cannot create task');
+    }
+
     const timestamp = this.getCurrentTimestamp();
     const newTask = {
       id: this.generateUUID(), // Generate ID first
@@ -125,7 +144,7 @@ class TaskAPI {
       is_current: false, // New tasks are never current initially
       created_at: timestamp,
       updated_at: timestamp,
-      user_id: this.getUserId() // ユーザーIDを設定
+      user_id: userId // ユーザーIDを設定
     };
 
     if (this.supabase) {
@@ -731,13 +750,26 @@ class TaskAPI {
    * Get all interruption tasks, ordered newest first
    */
   async getInterruptionTasks() {
+    const userId = this.getUserId();
+    // 認証されていない場合は空の配列を返す
+    if (!userId && !supabaseConfig.useLocalStorage) {
+      console.warn('API: User not authenticated, cannot fetch interruption tasks');
+      return [];
+    }
+
     if (this.supabase) {
       try {
-        const { data, error } = await this.supabase
+        const query = this.supabase
           .from('interruption_tasks')
           .select('*')
-          .eq('user_id', this.getUserId()) // 現在のユーザーの割り込みタスクのみ取得
           .order('created_at', { ascending: false });
+        
+        // 認証されている場合のみuser_idで絞り込む
+        if (userId) {
+          query.eq('user_id', userId);
+        }
+
+        const { data, error } = await query;
 
         if (error) throw error;
         return data || [];
@@ -761,9 +793,15 @@ class TaskAPI {
    * Create a new interruption task
    */
   async createInterruptionTask(taskData) {
-     if (!taskData || !taskData.title) {
-         throw new Error("Title is required for interruption task.");
-     }
+    const userId = this.getUserId();
+    // 認証されていない場合はエラーを投げる
+    if (!userId && !supabaseConfig.useLocalStorage) {
+      throw new Error('User not authenticated, cannot create interruption task');
+    }
+
+    if (!taskData || !taskData.title) {
+      throw new Error("Title is required for interruption task.");
+    }
 
     const timestamp = this.getCurrentTimestamp();
     const newTask = {
@@ -774,7 +812,7 @@ class TaskAPI {
       added_to_main: false,
       created_at: timestamp,
       updated_at: timestamp, // Set updated_at on creation too
-      user_id: this.getUserId() // ユーザーIDを設定
+      user_id: userId // ユーザーIDを設定
     };
 
     if (this.supabase) {
